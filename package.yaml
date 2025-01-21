@@ -20,6 +20,7 @@ dependencies:
   - deepseq
   - effectful
   - unordered-containers
+  - murmur3
 library:
   source-dirs: src
 

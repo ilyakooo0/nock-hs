@@ -1,6 +1,7 @@
 module Nock.Types
   ( pretty,
     Noun (..),
+    Atom,
     Annotation (..),
     atom,
     cell,
@@ -61,8 +62,10 @@ annotation :: Noun -> Annotation
 annotation (Atom _ ann) = ann
 annotation (Cell _ _ ann) = ann
 
+type Atom = Natural
+
 data Noun
-  = Atom !Natural Annotation
+  = Atom !Atom Annotation
   | Cell !Noun !Noun Annotation
   deriving stock (Generic)
   deriving anyclass (NFData)
