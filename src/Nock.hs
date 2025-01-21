@@ -8,6 +8,7 @@ import Effectful
 import Effectful.State.Static.Local qualified as SEL
 import GHC.Base
 import GHC.Num
+import GHC.Num.BigNat (bigNatAddWord#, bigNatFromWord2#)
 import Nock.Types
 
 sig :: Noun
@@ -36,13 +37,17 @@ wut Cell {} = sig
 wut Atom {} = one
 
 lus :: Noun -> Noun
-lus ~(Atom nat _) = atom (nat + 1)
+lus ~(Atom nat _) = atom $ case nat of
+  (NS n) -> case addWordC# n 1## of
+    (# l, 0# #) -> NS l
+    (# l, c #) -> NB (bigNatFromWord2# (int2Word# c) l)
+  (NB n) -> NB (bigNatAddWord# n 1##)
 
 tis :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Noun -> Eff es Noun
 tis lhs rhs = nounEq lhs rhs <&> \eq -> if eq then sig else one
 
-fasWord :: Word# -> Noun -> Noun
-fasWord lhs rhs =
+fas# :: Word# -> Noun -> Noun
+fas# lhs rhs =
   case lhs of
     1## -> rhs
     2## -> case rhs of
@@ -50,35 +55,34 @@ fasWord lhs rhs =
     3## -> case rhs of
       ~(Cell _ rhs' _) -> rhs'
     n ->
-      let rest = fasWord (uncheckedShiftRL# n 1#) rhs
+      let rest = fas# (uncheckedShiftRL# n 1#) rhs
        in case and# 1## n of
-            1## -> fasWord 3## rest
-            _ -> fasWord 2## rest
+            1## -> fas# 3## rest
+            _ -> fas# 2## rest
 
 fas :: Natural -> Noun -> Noun
-fas (NS w) rhs = fasWord w rhs
+fas (NS w) rhs = fas# w rhs
 fas n rhs =
   let rest = fas (unsafeShiftR n 1) rhs
    in if testBit n 0
         then fas 3 rest
         else fas 2 rest
 
-haxWord :: Word# -> Noun -> Noun -> Noun
-haxWord 1## newValue _ = newValue
-haxWord place newValue ~(Cell lhs rhs _) =
-  let a = uncheckedShiftRL# place 1#
-   in case and# place 1## of
-        1## -> cell (haxWord a newValue lhs) rhs
-        _ -> cell lhs (haxWord a newValue rhs)
+hax# :: Word# -> Noun -> Noun -> Noun
+hax# 1## b _ = b
+hax# n b c =
+  let a = uncheckedShiftRL# n 1#
+   in case and# n 1## of
+        1## -> hax# a (cell (fas# (n `xor#` 1##) c) b) c
+        _ -> hax# a (cell b (fas# (n `or#` 1##) c)) c
 
 hax :: Natural -> Noun -> Noun -> Noun
-hax (NS n) b c = haxWord n b c
+hax (NS n) b c = hax# n b c
 hax n b c =
   let a = unsafeShiftR n 1
-   in case n of
-        1 -> b
-        _ | testBit n 0 -> hax a (cell (fas (n - 1) c) b) c
-        _ -> hax a (cell b (fas (n + 1) c)) c
+   in if testBit n 0
+        then hax a (cell (fas (n - 1) c) b) c
+        else hax a (cell b (fas (n + 1) c)) c
 
 tar :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Eff es Noun
 tar ~(Cell subject ~(Cell a b _) _) = tar' a b subject
