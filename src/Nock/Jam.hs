@@ -12,6 +12,7 @@ import Data.ByteString.Lazy (ByteString)
 import Data.Map (Map)
 import Data.Map qualified as M
 import Nock
+import Nock.Types
 import Numeric.Natural
 
 type BitParser = StateT (Int, Map Int Noun) BitGet

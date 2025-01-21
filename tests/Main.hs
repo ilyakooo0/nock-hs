@@ -12,6 +12,8 @@ import System.FilePath.Posix
 import System.Process.Typed
 import Test.Tasty
 import Test.Tasty.Golden
+import Effectful
+import Effectful.State.Static.Local qualified as SEL
 
 main :: IO ()
 main = do
@@ -31,5 +33,6 @@ goldenTest = do
           $ proc "urbit" ["eval"]
             & setStdin (byteStringInput hoon)
             & setStderr nullStream
-      let result = TL.encodeUtf8 . pretty . tar $ cell (atom 0) nock
+      noun <- runEff . SEL.evalState (mempty :: EqualityCache) . tar $ cell (atom 0) nock
+      let result = TL.encodeUtf8 . pretty $ noun
       pure result

@@ -1,19 +1,13 @@
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 
-module Nock (tar, hax, fas, cell, atom, Annotation (..), Noun, RawNoun (..)) where
+module Nock (tar, hax, fas, cell, atom, Annotation (..), Noun) where
 
-import Control.DeepSeq (NFData, force)
 import Data.Bits
-import Data.Hashable
-import Data.Text.Lazy qualified as TL
-import Data.Text.Lazy.Builder qualified as TLB
-import Data.Text.Lazy.Builder.Int qualified as TLB
-import Debug.Trace
+import Data.Functor ((<&>))
+import Effectful
+import Effectful.State.Static.Local qualified as SEL
 import GHC.Base
-import GHC.Conc (par)
-import GHC.Generics (Generic)
 import GHC.Num
-import Nock.Jets
 import Nock.Types
 
 sig :: Noun
@@ -44,8 +38,8 @@ wut Atom {} = one
 lus :: Noun -> Noun
 lus ~(Atom nat _) = atom (nat + 1)
 
-tis :: Noun -> Noun -> Noun
-tis lhs rhs = if hashEq lhs rhs then sig else one
+tis :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Noun -> Eff es Noun
+tis lhs rhs = nounEq lhs rhs <&> \eq -> if eq then sig else one
 
 fasWord :: Word# -> Noun -> Noun
 fasWord lhs rhs =
@@ -70,7 +64,6 @@ fas n rhs =
         else fas 2 rest
 
 haxWord :: Word# -> Noun -> Noun -> Noun
-haxWord _ _ tree | traceShow tree False = undefined
 haxWord 1## newValue _ = newValue
 haxWord place newValue ~(Cell lhs rhs _) =
   let a = uncheckedShiftRL# place 1#
@@ -78,48 +71,60 @@ haxWord place newValue ~(Cell lhs rhs _) =
         1## -> cell (haxWord a newValue lhs) rhs
         _ -> cell lhs (haxWord a newValue rhs)
 
+hax :: Natural -> Noun -> Noun -> Noun
+hax (NS n) b c = haxWord n b c
 hax n b c =
   let a = unsafeShiftR n 1
    in case n of
         1 -> b
         _ | testBit n 0 -> hax a (cell (fas (n - 1) c) b) c
         _ -> hax a (cell b (fas (n + 1) c)) c
-tar :: Noun -> Noun
+
+tar :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Eff es Noun
 tar ~(Cell subject ~(Cell a b _) _) = tar' a b subject
 
-tar' :: Noun -> Noun -> Noun -> Noun
+tar' :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Noun -> Noun -> Eff es Noun
 tar' b c subject = case b of
   Cell x y _ -> case c of
-    ~(Cell l k _) -> cell (tar' x y subject) (tar' l k subject)
+    ~(Cell l k _) -> cell <$> tar' x y subject <*> tar' l k subject
   Atom (NB _) _ -> undefined
   Atom (NS n) _ -> case n of
     0## -> case c of
-      ~(Atom nat _) -> fas nat subject
-    1## -> c
+      ~(Atom nat _) -> pure $ fas nat subject
+    1## -> pure c
     3## -> case c of
-      ~(Cell l k _) -> wut $ tar' l k subject
+      ~(Cell l k _) -> wut <$> tar' l k subject
     4## -> case c of
-      ~(Cell l k _) -> lus $ tar' l k subject
+      ~(Cell l k _) -> lus <$> tar' l k subject
     _ -> case c of
       ~(Cell x ~(Cell h j _) _) -> case n of
         2## -> case x of
-          ~(Cell l k _) -> case tar' l k subject of
-            ~(formula@(Cell battery ~(Cell sample _ _) _)) ->
-              -- if traceShowId battery == Nock.Jets.add
-              --   then error "Found it!"
-              case (tar' h j subject) of
-                ~(Cell u v _) -> tar' u v formula
+          ~(Cell l k _) ->
+            tar' l k subject >>= \case
+              ~formula@(Cell battery ~(Cell sample _ _) _) ->
+                -- if traceShowId battery == Nock.Jets.add
+                --   then error "Found it!"
+                tar' h j subject >>= \case
+                  ~(Cell u v _) -> tar' u v formula
         5## -> case x of
-          ~(Cell l k _) -> tis (tar' h j subject) (tar' l k subject)
+          ~(Cell l k _) -> do
+            p <- tar' h j subject
+            q <- tar' l k subject
+            tis p q
         7## -> case x of
-          ~(Cell l k _) -> tar' h j (tar' l k subject)
+          ~(Cell l k _) -> tar' l k subject >>= tar' h j
         8## -> case x of
-          ~(Cell l k _) -> tar' h j (cell (tar' l k subject) subject)
-        9## -> tar' two (cell sigOne (cell sig x)) (tar' h j subject)
-        6## -> case tar' sig (tar' sig (tar' four (cell four x) subject) twoThree) (cell h j) of
-          ~(Cell u v _) -> tar' u v subject
+          ~(Cell l k _) -> do
+            p <- tar' l k subject
+            tar' h j (cell p subject)
+        9## -> tar' h j subject >>= tar' two (cell sigOne (cell sig x))
+        6## -> do
+          p <- tar' four (cell four x) subject
+          q <- tar' sig p twoThree
+          tar' sig q (cell h j) >>= \case
+            ~(Cell u v _) -> tar' u v subject
         10## -> case x of
-          ~(Cell ~(Atom b' _) ~(Cell u v _) _) -> hax b' (tar' u v subject) (tar' h j subject)
+          ~(Cell ~(Atom b' _) ~(Cell u v _) _) -> hax b' <$> tar' u v subject <*> tar' h j subject
         11## -> case x of
           Cell _ ~(Cell u v _) _ -> tar' h j subject
           Atom _ _ -> tar' h j subject

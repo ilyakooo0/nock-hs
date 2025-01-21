@@ -18,6 +18,8 @@ dependencies:
   - gauge
   - filepath
   - deepseq
+  - effectful
+  - unordered-containers
 library:
   source-dirs: src
 
@@ -85,3 +87,4 @@ tests:
       - nock
       - tasty-hspec
       - hspec
+      - effectful
