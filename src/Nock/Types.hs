@@ -2,6 +2,8 @@ module Nock.Types
   ( pretty,
     Noun (..),
     Atom,
+    atomShortByteString,
+    atomByteString,
     Annotation (..),
     atom,
     cell,
@@ -11,7 +13,10 @@ module Nock.Types
   )
 where
 
+import Control.Applicative
 import Control.DeepSeq
+import Data.ByteString (ByteString)
+import Data.ByteString.Short
 import Data.HashMap.Strict qualified as HM
 import Data.Text.Lazy qualified as TL
 import Data.Text.Lazy.Builder qualified as TLB
@@ -20,7 +25,10 @@ import Effectful
 import Effectful.State.Static.Local qualified as SEL
 import GHC.Generics
 import GHC.Natural
+import GHC.Num (Natural (..))
+import GHC.Num.BigNat (bigNatFromWord#)
 import System.Mem.StableName
+import Test.QuickCheck
 
 newtype EqualityCache = EqualityCache (HM.HashMap (StableName Noun, StableName Noun) Bool)
   deriving newtype (Semigroup, Monoid)
@@ -64,11 +72,30 @@ annotation (Cell _ _ ann) = ann
 
 type Atom = Natural
 
+atomShortByteString :: Atom -> ShortByteString
+atomShortByteString (NB ba) = SBS ba
+atomShortByteString (NS w) = SBS (bigNatFromWord# w)
+
+atomByteString :: Atom -> ByteString
+atomByteString = fromShort . atomShortByteString
+
 data Noun
   = Atom !Atom Annotation
   | Cell !Noun !Noun Annotation
   deriving stock (Generic)
   deriving anyclass (NFData)
+
+instance Eq Noun where
+  (Cell lhsA lhsB _) == (Cell rhsA rhsB _) = lhsA == rhsA && lhsB == rhsB
+  (Atom a _) == (Atom b _) = a == b
+  _ == _ = False
+
+instance Arbitrary Noun where
+  arbitrary =
+    oneof
+      [ atom <$> arbitrarySizedNatural,
+        cell <$> arbitrary <*> arbitrary
+      ]
 
 instance Show Noun where
   show = TL.unpack . pretty

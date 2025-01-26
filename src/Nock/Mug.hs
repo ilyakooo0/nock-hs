@@ -1,6 +1,9 @@
-module Nock.Mug () where
+module Nock.Mug (Mug, mugBS, mugAtom, mugBoth) where
 
+import Data.Bits
 import Data.ByteString (ByteString)
+import Data.ByteString.Builder
+import Data.ByteString.Lazy (toStrict)
 import Data.Hash.Murmur (murmur3)
 import Data.Word (Word32)
 import Nock.Types
@@ -11,7 +14,7 @@ mugBS :: ByteString -> Word32
 mugBS = mum 0xcafe_babe 0x7fff
 
 mugAtom :: Atom -> Word32
-mugAtom = mugBS . atomBytes
+mugAtom = mugBS . atomByteString
 
 mugBoth :: Word32 -> Word32 -> Word32
 mugBoth m n =

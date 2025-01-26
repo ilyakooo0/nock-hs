@@ -51,7 +51,7 @@ extra-deps:
 # - git: https://github.com/hsyl20/binary-bits.git
 #   commit: 8aa66ff52166ff283b66c7c322108fcb4aa55192
 - git: https://github.com/ilyakooo0/binary-bits
-  commit: f58ae476ff50dfc277f8dd603142b7ce864b8e03
+  commit: 21adca7da6e378c8e3cc7bb1afa9dd441a721016
 # Override default flag values for local packages and extra-deps
 # flags: {}
 

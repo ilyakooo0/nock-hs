@@ -21,6 +21,7 @@ dependencies:
   - effectful
   - unordered-containers
   - murmur3
+  - file-embed
 library:
   source-dirs: src
 
@@ -90,3 +91,5 @@ tests:
       - tasty-hspec
       - hspec
       - effectful
+      - tasty-quickcheck
+      - tasty-hunit

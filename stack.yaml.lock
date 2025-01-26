@@ -5,15 +5,15 @@
 
 packages:
 - completed:
-    commit: f58ae476ff50dfc277f8dd603142b7ce864b8e03
+    commit: 21adca7da6e378c8e3cc7bb1afa9dd441a721016
     git: https://github.com/ilyakooo0/binary-bits
     name: binary-bits
     pantry-tree:
-      sha256: d4886449b9be758d88537eb50a5f9e7c456398c4e1a0b38eb6a2eba07ce71300
-      size: 808
+      sha256: b6f354e26ca7563ad73a3234cd43918ba8edfb5bee7c5e5f8a9173c9109bba66
+      size: 907
     version: '0.6'
   original:
-    commit: f58ae476ff50dfc277f8dd603142b7ce864b8e03
+    commit: 21adca7da6e378c8e3cc7bb1afa9dd441a721016
     git: https://github.com/ilyakooo0/binary-bits
 snapshots:
 - completed:
