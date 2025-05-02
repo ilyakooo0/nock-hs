@@ -22,6 +22,7 @@ dependencies:
   - unordered-containers
   - murmur3
   - file-embed
+  - mtl
 library:
   source-dirs: src
 
@@ -35,6 +36,7 @@ benchmarks:
     main: bench/Main.hs
 
     dependencies:
+      - effectful
       - tasty
       - nock
 ghc-options: > 

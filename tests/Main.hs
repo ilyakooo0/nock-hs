@@ -7,16 +7,16 @@ import Data.Text.Lazy.Encoding as TL
 import Effectful
 import Effectful.State.Static.Local qualified as SEL
 import Nock
+import Nock.Cue
 import Nock.Jam
 import Nock.Jets
 import Nock.Parser qualified
-import Nock.Printer
 import Nock.Types
 import System.FilePath.Posix
 import System.Process.Typed
 import Test.Tasty
 import Test.Tasty.Golden
-import Test.Tasty.HUnit (assertEqual, testCase, (@=?), (@?=))
+import Test.Tasty.HUnit (testCase, (@?=))
 import Test.Tasty.QuickCheck
 
 main :: IO ()
@@ -27,6 +27,7 @@ main = do
       "nock"
       [ spec,
         testProperty "cue . jam == id" (\noun -> noun === (cue . jam) noun),
+        testProperty "jam . cue . jam == jam" (\noun -> jam noun === (jam . cue . jam) noun),
         testCase "" (decJam @?= BSL.toStrict ((jam . cue) (BSL.fromStrict decJam)))
       ]
 

@@ -13,7 +13,6 @@ module Nock.Types
   )
 where
 
-import Control.Applicative
 import Control.DeepSeq
 import Data.ByteString (ByteString)
 import Data.ByteString.Short
@@ -89,6 +88,12 @@ instance Eq Noun where
   (Cell lhsA lhsB _) == (Cell rhsA rhsB _) = lhsA == rhsA && lhsB == rhsB
   (Atom a _) == (Atom b _) = a == b
   _ == _ = False
+
+instance Ord Noun where
+  Atom {} <= Cell {} = True
+  Cell {} <= Atom {} = False
+  Atom n _ <= Atom m _ = n <= m
+  Cell a b _ <= Cell c d _ = (a, b) <= (c, d)
 
 instance Arbitrary Noun where
   arbitrary =

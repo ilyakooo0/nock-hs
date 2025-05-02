@@ -43,8 +43,8 @@ lus ~(Atom nat _) = atom $ case nat of
     (# l, c #) -> NB (bigNatFromWord2# (int2Word# c) l)
   (NB n) -> NB (bigNatAddWord# n 1##)
 
-tis :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Noun -> Eff es Noun
-tis lhs rhs = nounEq lhs rhs <&> \eq -> if eq then sig else one
+tis :: Noun -> Noun -> Eff es Noun
+tis lhs rhs = pure $ if lhs == rhs then sig else one
 
 fas# :: Word# -> Noun -> Noun
 fas# lhs rhs =
@@ -84,10 +84,10 @@ hax n b c =
         then hax a (cell (fas (n - 1) c) b) c
         else hax a (cell b (fas (n + 1) c)) c
 
-tar :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Eff es Noun
+tar :: Noun -> Eff es Noun
 tar ~(Cell subject ~(Cell a b _) _) = tar' a b subject
 
-tar' :: (SEL.State EqualityCache :> es, IOE :> es) => Noun -> Noun -> Noun -> Eff es Noun
+tar' :: Noun -> Noun -> Noun -> Eff es Noun
 tar' b c subject = case b of
   Cell x y _ -> case c of
     ~(Cell l k _) -> cell <$> tar' x y subject <*> tar' l k subject

@@ -1,135 +1,108 @@
-module Nock.Jam (jam, cue, mat, rub) where
+{-# LANGUAGE NoMonomorphismRestriction #-}
 
+module Nock.Jam (jam, mat) where
+
+import Control.Monad.Identity
+import Control.Monad.State.Strict (MonadState (..))
 import Control.Monad.Trans.Class
-import Control.Monad.Trans.State
+import Control.Monad.Trans.State hiding (get, put)
 import Data.Binary.Bits.BitOrder
-import Data.Binary.Bits.Get
-import Data.Binary.Bits.Put
-import Data.Binary.Get (runGet)
+import Data.Binary.Bits.Put qualified as Put
 import Data.Binary.Put (runPut)
 import Data.Bits
 import Data.ByteString.Lazy (ByteString)
-import Data.Map (Map)
-import Data.Map qualified as M
-import GHC.Base (Int (..), Word (..), Word#, int2Word#, minusWord#, or#, plusWord#, shiftL#, word2Int#)
+import Data.HashMap.Strict qualified as HM
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as M
+import GHC.Base (Word (..), Word#, plusWord#)
 import GHC.Num
-import Nock
 import Nock.Types
 
-type BitParser = StateT (Int, Map Int Noun) BitGet
+type BitPrinterM = StateT (Natural, Map Noun Natural) Put.BitPut
 
-parseBit# :: BitParser Int
-parseBit# = do
-  (counter, m) <- get
-  b <- lift getBool#
-  put (counter + 1, m)
-  pure b
+newtype SomeBitPrinter a = SomeBitPrinter (forall m. (BitPrinter m) => m a)
 
-parseBits# :: Word# -> BitParser Natural
-parseBits# 0## = pure 0
-parseBits# n = do
-  I# b <- parseBit#
-  rest <- parseBits# (n `minusWord#` 1##)
-  pure $ (rest `shiftL` 1) `naturalOr` NS (int2Word# b)
+runSomeBitPrinter :: (BitPrinter m) => SomeBitPrinter a -> m a
+runSomeBitPrinter (SomeBitPrinter act) = act
 
-getOffset :: BitParser Int
+class (MonadState (Natural, Map Noun Natural) m) => BitPrinter m where
+  putBit# :: (BitPrinter m) => Word# -> m ()
+  putBool :: Bool -> m ()
+
+instance BitPrinter (StateT (Natural, Map Noun Natural) Identity) where
+  putBit# _ = do
+    (counter, m) <- get
+    put (counter + 1, m)
+  putBool _ = do
+    (counter, m) <- get
+    put (counter + 1, m)
+
+instance BitPrinter BitPrinterM where
+  putBit# w = do
+    (counter, m) <- get
+    lift $ Put.putBool# w
+    put (counter + 1, m)
+  putBool b = do
+    (counter, m) <- get
+    lift $ Put.putBool b
+    put (counter + 1, m)
+
+getOffset :: (BitPrinter m) => m Natural
 getOffset = fst <$> get
 
-getMapping :: BitParser (Map Int Noun)
+getMapping :: (BitPrinter m) => m (Map Noun Natural)
 getMapping = snd <$> get
 
-putMapping :: Map Int Noun -> BitParser ()
+putMapping :: (BitPrinter m) => Map Noun Natural -> m ()
 putMapping m = do
   (offset, _) <- get
   put (offset, m)
 
-cue :: ByteString -> Noun
-cue = runGet (runBitGet . withBitOrder LL . flip evalStateT (0, M.empty) $ cue')
-
-cue' :: BitParser Noun
-cue' = do
-  offset <- getOffset
-  I# isNotAtom <- parseBit#
-  case isNotAtom of
-    0# -> do
-      a' <- rub'
-      let a = atom a'
-      m <- getMapping
-      putMapping $ M.insert offset a m
-      pure a
-    _ -> do
-      I# isRef <- parseBit#
-      case isRef of
-        0# -> do
-          x <- cue'
-          y <- cue'
-          let c = cell x y
-          m <- getMapping
-          putMapping $ M.insert offset c m
-          pure c
-        _ -> do
-          ref <- rub'
-          let ref# = case ref of
-                NS w -> I# (word2Int# w)
-                _ -> undefined
-          m <- getMapping
-          case M.lookup ref# m of
-            Nothing -> undefined
-            Just a -> pure a
-
 jam :: Noun -> ByteString
-jam n = runPut . runBitPut . withBitOrder LL $ jam' n
+jam n = runPut . Put.runBitPut . withBitOrder LL . flip evalStateT (0, M.empty) $ jam' n
 
-jam' :: Noun -> BitPut ()
+jam' :: (BitPrinter m) => Noun -> m ()
 jam' (Atom n _) = do
-  putBool# 0##
+  putBit# 0##
   mat' n
-jam' (Cell lhs rhs _) = do
-  putBool# 1##
-  putBool# 0##
-  jam' lhs
-  jam' rhs
+jam' n@(Cell lhs rhs _) = do
+  offset <- getOffset
+  putBit# 1##
+  let inlineAct = SomeBitPrinter $ do
+        putBit# 0##
+        jam' lhs
+        jam' rhs
+  mapping <- getMapping
+  case M.lookup n mapping of
+    Nothing -> do
+      runSomeBitPrinter inlineAct
+      putMapping $ M.insert n offset mapping
+    Just ref -> do
+      s <- get
+      let refAct = SomeBitPrinter $ do
+            putBit# 1##
+            mat' ref
+          (inlineLength, _) = runIdentity . flip execStateT s . runSomeBitPrinter $ inlineAct
+          (refLength, _) = runIdentity . flip execStateT s . runSomeBitPrinter $ refAct
+      if inlineLength < refLength then runSomeBitPrinter inlineAct else runSomeBitPrinter refAct
 
 mat :: Natural -> ByteString
-mat n = runPut . runBitPut . withBitOrder LL $ mat' n
+mat n = runPut . Put.runBitPut . withBitOrder LL . flip evalStateT (0, M.empty) $ mat' n
 
-mat' :: Natural -> BitPut ()
-mat' 0 = putBool# 1##
+mat' :: (BitPrinter m) => Natural -> m ()
+mat' 0 = putBit# 1##
 mat' n = do
   let bitsLength = countBits# n
       lengthBits = init $ numToBits (W# bitsLength)
-  putBool# 0##
+  putBit# 0##
   putBits $ replicate (length lengthBits) False
-  putBool# 1##
+  putBit# 1##
   putBits lengthBits
   putNumToBits# n
 
-putBits :: [Bool] -> BitPut ()
+putBits :: (BitPrinter m) => [Bool] -> m ()
 putBits [] = pure ()
 putBits (x : xs) = putBool x >> putBits xs
-
-rub :: ByteString -> Natural
-rub = runGet (runBitGet . withBitOrder LL . flip evalStateT (0, M.empty) $ rub')
-
-rub' :: BitParser Natural
-rub' = do
-  parseBit# >>= \case
-    I# 0# -> do
-      W# lengthOfLength <- countZeros 0
-      lengthBits <- parseBits# lengthOfLength
-      let lengthBits# = case lengthBits of
-            NS w -> w
-            _ -> undefined
-      let lent = lengthBits# `or#` (1## `shiftL#` word2Int# lengthOfLength)
-      parseBits# lent
-    _ -> pure 0
-
-countZeros :: Word -> BitParser Word
-countZeros n = do
-  I# b <- parseBit#
-  case b of
-    0# -> countZeros (n + 1)
-    _ -> pure n
 
 numToBits :: (Bits a, Integral a) => a -> [Bool]
 numToBits n | n <= 0 = []
@@ -139,13 +112,8 @@ countBits# :: Natural -> Word#
 countBits# (NS 0##) = 0##
 countBits# n = 1## `plusWord#` countBits# (n `naturalShiftR#` 1##)
 
-putNumToBits# :: Natural -> BitPut ()
+putNumToBits# :: (BitPrinter m) => Natural -> m ()
 putNumToBits# (NS 0##) = pure ()
 putNumToBits# n = case n .&. 1 of
-  NS w -> putBool# w >> putNumToBits# (n `naturalShiftR#` 1##)
+  NS w -> putBit# w >> putNumToBits# (n `naturalShiftR#` 1##)
   _ -> undefined
-
--- ((n .&. 1) == 1) : numToBits (shiftR n 1)
-
-bitsToNum :: (Bits a, Integral a) => [Bool] -> a
-bitsToNum = foldr (\b acc -> shiftL acc 1 .|. if b then 1 else 0) 0

@@ -10,6 +10,7 @@ import Nock.Parser (noun)
 import System.FilePath.Posix
 import System.Process.Typed
 import Test.Tasty.Golden (findByExtension)
+import Effectful
 
 main :: IO ()
 main = do
@@ -22,5 +23,5 @@ main = do
         $ proc "urbit" ["eval"]
           & setStdin (byteStringInput hoon)
           & setStderr nullStream
-    pure $ bench (takeBaseName hoonFile) $ nf tar $ cell (atom 0) nock
+    pure $ bench (takeBaseName hoonFile) $ nf (runPureEff . tar) $ cell (atom 0) nock
   defaultMain benchmarks
