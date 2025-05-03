@@ -5,8 +5,8 @@ module Nock.Jets (add, dec, decJam, decNoun) where
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy qualified as BSL
 import Data.FileEmbed (embedFileRelative)
-import Nock.Jam 
 import Nock.Cue
+import Nock.Jam
 import Nock.Parser qualified
 import Nock.Types
 

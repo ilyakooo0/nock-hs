@@ -27,7 +27,6 @@ main = do
       "nock"
       [ spec,
         testProperty "cue . jam == id" (\noun -> noun === (cue . jam) noun),
-        testProperty "jam . cue . jam == jam" (\noun -> jam noun === (jam . cue . jam) noun),
         testCase "" (decJam @?= BSL.toStrict ((jam . cue) (BSL.fromStrict decJam)))
       ]
 

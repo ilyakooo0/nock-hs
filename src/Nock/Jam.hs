@@ -11,19 +11,14 @@ import Data.Binary.Bits.Put qualified as Put
 import Data.Binary.Put (runPut)
 import Data.Bits
 import Data.ByteString.Lazy (ByteString)
-import Data.HashMap.Strict qualified as HM
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as M
-import GHC.Base (Word (..), Word#, plusWord#)
+import GHC.Base (Word (..), Word#, int2Word#, isTrue#, leWord#, plusWord#, timesWord#)
+import GHC.Int (Int (..))
 import GHC.Num
 import Nock.Types
 
 type BitPrinterM = StateT (Natural, Map Noun Natural) Put.BitPut
-
-newtype SomeBitPrinter a = SomeBitPrinter (forall m. (BitPrinter m) => m a)
-
-runSomeBitPrinter :: (BitPrinter m) => SomeBitPrinter a -> m a
-runSomeBitPrinter (SomeBitPrinter act) = act
 
 class (MonadState (Natural, Map Noun Natural) m) => BitPrinter m where
   putBit# :: (BitPrinter m) => Word# -> m ()
@@ -53,38 +48,45 @@ getOffset = fst <$> get
 getMapping :: (BitPrinter m) => m (Map Noun Natural)
 getMapping = snd <$> get
 
-putMapping :: (BitPrinter m) => Map Noun Natural -> m ()
-putMapping m = do
-  (offset, _) <- get
-  put (offset, m)
+putMapping :: (BitPrinter m) => Noun -> Natural -> m ()
+putMapping idx n = do
+  (offset, m) <- get
+  put (offset, M.insert idx n m)
 
 jam :: Noun -> ByteString
 jam n = runPut . Put.runBitPut . withBitOrder LL . flip evalStateT (0, M.empty) $ jam' n
 
 jam' :: (BitPrinter m) => Noun -> m ()
-jam' (Atom n _) = do
-  putBit# 0##
-  mat' n
-jam' n@(Cell lhs rhs _) = do
+jam' n = do
   offset <- getOffset
-  putBit# 1##
-  let inlineAct = SomeBitPrinter $ do
-        putBit# 0##
-        jam' lhs
-        jam' rhs
   mapping <- getMapping
   case M.lookup n mapping of
     Nothing -> do
-      runSomeBitPrinter inlineAct
-      putMapping $ M.insert n offset mapping
+      putMapping n offset
+      case n of
+        (Atom a _) -> do
+          putBit# 0##
+          mat' a
+        (Cell lhs rhs _) -> do
+          putBit# 1##
+          putBit# 0##
+          jam' lhs
+          jam' rhs
     Just ref -> do
-      s <- get
-      let refAct = SomeBitPrinter $ do
-            putBit# 1##
-            mat' ref
-          (inlineLength, _) = runIdentity . flip execStateT s . runSomeBitPrinter $ inlineAct
-          (refLength, _) = runIdentity . flip execStateT s . runSomeBitPrinter $ refAct
-      if inlineLength < refLength then runSomeBitPrinter inlineAct else runSomeBitPrinter refAct
+      case n of
+        Cell {} -> do
+          putBit# 1##
+          putBit# 1##
+          mat' ref
+        (Atom a _) -> do
+          if isTrue# (matSize a `leWord#` matSize ref)
+            then do
+              putBit# 0##
+              mat' a
+            else do
+              putBit# 1##
+              putBit# 1##
+              mat' ref
 
 mat :: Natural -> ByteString
 mat n = runPut . Put.runBitPut . withBitOrder LL . flip evalStateT (0, M.empty) $ mat' n
@@ -99,6 +101,13 @@ mat' n = do
   putBit# 1##
   putBits lengthBits
   putNumToBits# n
+
+matSize :: Natural -> Word#
+matSize 0 = 1##
+matSize n =
+  let bitsLength = countBits# n
+      !(I# lengthBits) = length $ init $ numToBits (W# bitsLength)
+   in 2## `plusWord#` (int2Word# lengthBits `timesWord#` 2##) `plusWord#` bitsLength
 
 putBits :: (BitPrinter m) => [Bool] -> m ()
 putBits [] = pure ()
